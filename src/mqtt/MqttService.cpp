@@ -77,7 +77,9 @@ bool MqttService::reconnect() {
         // Assina comandos diretos ao device
         String cmdTopic =
             String(MQTT_ROOT_TOPIC) +
-            "/" + nodeId + "/#";
+            "/devices/" +
+            nodeId +
+            "/#";
 
         _mqtt.subscribe(cmdTopic.c_str());
 
@@ -97,6 +99,7 @@ bool MqttService::isConnected() {
     return _mqtt.connected();
 }
 
+/*
 void MqttService::onMessage(char* topic,
                             byte* payload,
                             unsigned int length) {
@@ -108,6 +111,72 @@ void MqttService::onMessage(char* topic,
     }
 
     LogService::info("MQTT RX: " + String(topic) + " -> " + msg);
+}
+*/
+
+void MqttService::onMessage(char* topic,
+                            byte* payload,
+                            unsigned int length) {
+
+    String topicStr = String(topic);
+
+    // Constrói payload em String
+    String msg;
+    msg.reserve(length);
+
+    for (unsigned int i = 0; i < length; i++) {
+        msg += (char)payload[i];
+    }
+
+    LogService::info("MQTT RX: " + topicStr + " -> " + msg);
+
+    // Verifica se é tópico de comando
+    const String nodeId = NodeIdentity::id();
+    String cmdPrefix =
+        String(MQTT_ROOT_TOPIC) +
+        "/" + nodeId + "/";
+
+    if (!topicStr.startsWith(cmdPrefix)) {
+        return; // não é comando do device
+    }
+
+    if (_commandCallback == nullptr) {
+        return; // usuário não registrou callback
+    }
+
+    // Parse JSON
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, msg);
+
+    if (error) {
+        LogService::warn("JSON inválido");
+        return;
+    }
+
+    String action = doc["action"] | "";
+    String value  = doc["value"]  | "";
+
+    _commandCallback(action, value, doc);
+
+    String base =
+    String(MQTT_ROOT_TOPIC) +
+    "/devices/" +
+    nodeId +
+    "/";
+
+    if (!topicStr.startsWith(base)) return;
+
+    String channel = topicStr.substring(base.length());
+
+    if (channel == "cmd") {
+        handleCommand(msg);
+    }
+    else if (channel == "config") {
+        handleConfig(msg);
+    }
+    else if (channel == "ota") {
+        handleOta(msg);
+    }
 }
 
 void MqttService::publishHello() {
@@ -151,4 +220,23 @@ void MqttService::publishSerial(const String& message) {
         NodeIdentity::id();
 
     _mqtt.publish(topic.c_str(), message.c_str(), false);
+}
+
+CommandCallback MqttService::_commandCallback = nullptr;
+
+void MqttService::onCommand(CommandCallback callback) {
+    _commandCallback = callback;
+}
+
+
+void MqttService::handleCommand(const String& payload) {
+    LogService::info("Handle CMD: " + payload);
+}
+
+void MqttService::handleConfig(const String& payload) {
+    LogService::info("Handle CONFIG: " + payload);
+}
+
+void MqttService::handleOta(const String& payload) {
+    LogService::info("Handle OTA: " + payload);
 }

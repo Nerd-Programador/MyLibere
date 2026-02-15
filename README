@@ -1,0 +1,162 @@
+# MyLibere
+
+Biblioteca IoT modular para ESP8266 e ESP32 com foco em:
+
+-   WiFi não bloqueante (millis)
+-   MQTT estruturado por identidade automática do dispositivo
+-   OTA via IDE
+-   OTA HTTP via Raspberry Pi
+-   Sistema de Log com Bridge para dashboard
+-   Arquitetura organizada por serviços
+
+------------------------------------------------------------------------
+
+## 📦 Estrutura
+
+    MyLibere/
+    ├── core/
+    ├── network/
+    ├── mqtt/
+    ├── ota/
+    ├── log/
+    ├── bridge/
+    ├── config/
+    └── utils/
+
+Cada módulo é responsável por uma área específica do sistema.
+
+------------------------------------------------------------------------
+
+## 🚀 Inicialização
+
+Exemplo básico:
+
+``` cpp
+#include <MyLibereCore.h>
+
+MyLibereCore core;
+
+void setup() {
+    core.begin();
+}
+
+void loop() {
+    core.loop();
+}
+```
+
+------------------------------------------------------------------------
+
+## 📡 WiFiService
+
+-   Conexão automática
+-   Reconexão por intervalo
+-   Sem uso de delay()
+-   Controle por millis()
+
+------------------------------------------------------------------------
+
+## 📬 MQTT
+
+Configuração padrão em `MqttDefaults.h`:
+
+``` cpp
+#define MQTT_BROKER     "192.168.15.60"
+#define MQTT_PORT       1883
+#define MQTT_USER       "esp_iot"
+#define MQTT_PASS       "IOT"
+#define MQTT_ROOT_TOPIC "servermaster"
+```
+
+Tópicos seguem o padrão:
+
+    servermaster/<NodeID>/status
+    servermaster/<NodeID>/...
+
+Last Will configurado automaticamente como `offline`.
+
+------------------------------------------------------------------------
+
+## 🔄 OTA IDE
+
+-   Hostname automático baseado no NodeID
+-   Senha configurável
+-   Inicializa após conexão WiFi
+
+------------------------------------------------------------------------
+
+## 🌐 OTA HTTP (Raspberry Pi)
+
+Estrutura esperada na Pi:
+
+    /mnt/pendrive/firmware/
+    ├── roomsmart/
+    │   ├── firmware.bin
+    │   └── version.json
+    ├── garagem/
+    ├── aquasmart/
+    └── cooksmart/
+
+Formato do `version.json`:
+
+``` json
+{
+  "esp8266": "1.3.0",
+  "esp32": "1.0.0"
+}
+```
+
+A ESP verifica automaticamente se existe nova versão antes de baixar.
+
+------------------------------------------------------------------------
+
+## 🧠 Identidade do Dispositivo
+
+Gerada automaticamente via `NodeIdentity::id()`.
+
+Exemplo:
+
+    ESP-B7F437
+
+------------------------------------------------------------------------
+
+## 📝 LogService
+
+-   INFO
+-   WARN
+-   ERROR
+-   Serial output estruturado
+-   Bridge opcional para dashboard
+-   Buffer configurável via:
+
+``` cpp
+#define LOG_BUFFER_SIZE 50
+```
+
+------------------------------------------------------------------------
+
+## 🔧 Configuração Geral
+
+Arquivo principal de configuração:
+
+    MyLibereConfig.h
+
+Controla: - MQTT - OTA - Firebase bridge - Logging - Ambiente OTA HTTP
+
+------------------------------------------------------------------------
+
+## 📌 Status Atual
+
+Versão atual: **V1.x (pré-SDK 2.0)**
+
+Sistema funcional com: - WiFi estável - MQTT operacional - OTA IDE
+funcional - OTA HTTP estruturado - LogService com refinamentos
+
+------------------------------------------------------------------------
+
+## 🔮 Próximos Passos
+
+-   Testes completos OTA HTTP
+-   Versionamento formal
+-   Tag V2.0.0-SDK
+-   Documentação técnica expandida

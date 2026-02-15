@@ -16,3 +16,7 @@ void MyLibereCore::loop() {
 
 }
 
+MqttService& MyLibereCore::mqtt() {
+    return _mqtt;
+}
+

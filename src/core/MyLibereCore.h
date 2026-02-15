@@ -1,3 +1,5 @@
+#pragma once
+
 #include "network/WiFiService.h"
 #include "mqtt/MqttService.h"
 #include "ota/OtaIdeService.h"
@@ -7,6 +9,8 @@ class MyLibereCore {
 public:
     void begin();
     void loop();
+
+    MqttService& mqtt();
 
 private:
     WiFiService _wifi;

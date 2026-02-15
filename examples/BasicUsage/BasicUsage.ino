@@ -1,25 +1,50 @@
 #include <MyLibere.h>
 
 /*
-Exemplo básico de uso da biblioteca MyLibere
+===========================================================
+Exemplo Oficial MyLibere – Inicialização Básica
+===========================================================
 
 Responsabilidade:
-- Inicializa toda a stack IoT (WiFi, MQTT, OTA, Logs)
-- Executa o loop principal não-bloqueante
+
+✔ Inicializa WiFi
+✔ Inicializa MQTT
+✔ Inicializa sistema de logs
+✔ Inicializa OTA (quando habilitado)
+✔ Mantém o loop principal não bloqueante
+
+Este é o menor exemplo funcional da biblioteca.
+===========================================================
 */
+
+
+// ==========================================================
+// SETUP
+// ==========================================================
 
 void setup() {
 
-    // Inicializa serial para debug
+    // Inicializa comunicação serial para debug local
     Serial.begin(115200);
-    delay(100); // pequeno tempo só para estabilizar serial (ok usar aqui)
 
-    // Inicializa framework
+    // Inicializa toda a stack IoT
+    // Internamente:
+    // - Conecta no WiFi
+    // - Configura identidade do node
+    // - Inicializa MQTT
+    // - Prepara sistema OTA
     MyLibere::begin();
 }
 
+
+// ==========================================================
+// LOOP PRINCIPAL
+// ==========================================================
+
 void loop() {
 
-    // Loop principal do framework (não bloqueante)
+    // Mantém todos os serviços internos ativos
+    // (WiFi, MQTT, reconexões, OTA futuro, etc.)
+    // Totalmente não bloqueante
     MyLibere::loop();
 }

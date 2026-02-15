@@ -8,6 +8,13 @@
 #endif
 
 #include <PubSubClient.h>
+#include <ArduinoJson.h>
+
+typedef void (*CommandCallback)(
+    const String& action,
+    const String& value,
+    JsonDocument& doc
+);
 
 class MqttService {
 public:
@@ -22,8 +29,10 @@ public:
                 bool retain = false);*/
 
     void publishHello();
-    void publishData(const String& payload, bool retain);
+    void publishData(const String& payload, bool retain = false);
     void publishSerial(const String& message);
+
+    void onCommand(CommandCallback callback);
 
 private:
     WiFiClient _wifiClient;   // agora o tipo já é conhecido
@@ -34,4 +43,11 @@ private:
     static void onMessage(char* topic,
                         byte* payload,
                         unsigned int length);
+
+    static CommandCallback _commandCallback;
+
+    static void handleCommand(const String& payload);
+    static void handleConfig(const String& payload);
+    static void handleOta(const String& payload);
+
 };

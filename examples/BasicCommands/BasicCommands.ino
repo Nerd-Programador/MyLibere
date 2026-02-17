@@ -1,114 +1,95 @@
 #include <MyLibere.h>
+#include "UserConfig.h"
 
 /*
 ===========================================================
-Exemplo: Recebimento de comandos MQTT
+Exemplo: Recebimento de comandos MQTT (Serial-like)
 ===========================================================
 
 Objetivo:
-Demonstrar como registrar um callback de comando e
+Demonstrar como registrar callback de comando e
 executar ações locais no dispositivo.
-
-Fluxo:
-1) Device conecta ao Wi-Fi
-2) Conecta ao broker MQTT
-3) Aguarda comandos no tópico do device
-4) Executa ação local
-5) Publica resposta no MQTT
 
 Comando esperado (JSON):
 {
     "action": "led",
     "value": "on"
 }
+
+Onde chega:
+servermaster/<NodeID>/<ENV>/cmd/do
 ===========================================================
 */
 
 // ----------------------------------------------------------
-// Definição de hardware
+// Definição de hardware (LED)
 // ----------------------------------------------------------
+// ESP8266 (NodeMCU): LED interno geralmente é GPIO2 e invertido (LOW liga).
+// ESP32: depende da placa; muitas DevKit nem têm LED fixo no GPIO2.
+// Deixei um padrão seguro: se não tiver LED, você troca o LED_PIN.
+#if defined(ESP8266)
+    const int LED_PIN = 2;
+    const bool LED_INVERTED = true;
+#else
+    const int LED_PIN = 2;      // ajuste se sua ESP32 usar outro pino
+    const bool LED_INVERTED = false;
+#endif
 
-// ESP8266 → LED interno funciona com lógica invertida
-// LOW  = LED ligado
-// HIGH = LED desligado
-const int LED_PIN = 2;
-
+void setLed(bool on) {
+    // Responsabilidade:
+    // - abstrair a inversão (ESP8266) e deixar o código de comando limpo.
+    if (LED_INVERTED) {
+        digitalWrite(LED_PIN, on ? LOW : HIGH);
+    } else {
+        digitalWrite(LED_PIN, on ? HIGH : LOW);
+    }
+}
 
 // ----------------------------------------------------------
 // Callback de comando MQTT
 // ----------------------------------------------------------
-// Essa função será chamada automaticamente sempre que
-// o device receber um comando no tópico correto.
-//
-// action → tipo de ação (ex: "led")
-// value  → valor da ação (ex: "on")
-// doc    → JSON completo recebido (caso queira usar mais campos)
-// ----------------------------------------------------------
-void handleCommand(
-    const String& action,
-    const String& value,
-    JsonDocument& doc
-) {
+void handleCommand(const String& action, const String& value, JsonDocument& doc) {
+    (void)doc; // não usado agora, mas deixado para expansão futura
 
-    // Verifica se o comando é para controlar o LED
-    if (action == "led") {
+    if (action != "led") return;
 
-        if (value == "on") {
-
-            digitalWrite(LED_PIN, LOW); // Liga LED
-
-            // Publica retorno informando sucesso
-            MyLibere::mqttInfo("LED ON");
-        }
-        else if (value == "off") {
-
-            digitalWrite(LED_PIN, HIGH); // Desliga LED
-
-            MyLibere::mqttInfo("LED OFF");
-        }
-        else {
-            // Caso receba valor inválido
-            MyLibere::logWarn("Valor inválido para LED");
-        }
+    if (value == "on") {
+        setLed(true);
+        Mqtt.info("LED ON");
+        Log.info("Comando LED ON aplicado");
+    }
+    else if (value == "off") {
+        setLed(false);
+        Mqtt.info("LED OFF");
+        Log.info("Comando LED OFF aplicado");
+    }
+    else {
+        Log.warn("Valor inválido para LED: " + value);
+        Mqtt.warn("Valor inválido para LED");
     }
 }
-
 
 // ----------------------------------------------------------
 // Setup
 // ----------------------------------------------------------
 void setup() {
-
     Serial.begin(115200);
 
-    // Inicializa pino do LED
     pinMode(LED_PIN, OUTPUT);
-    digitalWrite(LED_PIN, HIGH); // começa desligado
+    setLed(false);
 
-    // Inicializa MyLibere
-    // Responsável por:
-    // ✔ Wi-Fi
-    // ✔ MQTT
-    // ✔ Serviços internos
     MyLibere::begin();
 
-    // Registra a função de callback para comandos MQTT
+    // Registra callback de comandos
     MyLibere::mqtt().onCommand(handleCommand);
 
-    MyLibere::logInfo("Sistema iniciado");
+    Log.info("Sistema iniciado");
+    Mqtt.event("ready");
 }
 
-
 // ----------------------------------------------------------
-// Loop principal
-// ----------------------------------------------------------
-// Deve ser chamado continuamente.
-// Responsável por:
-// ✔ Manter conexão MQTT
-// ✔ Processar mensagens recebidas
-// ✔ Executar tarefas internas da biblioteca
+// Loop
 // ----------------------------------------------------------
 void loop() {
-
     MyLibere::loop();
 }

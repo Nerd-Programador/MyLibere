@@ -8,6 +8,7 @@
 
 #include <PubSubClient.h>
 #include "config/MqttDefaults.h"
+#include "config/EnvironmentConfig.h"
 #include "network/WiFiService.h"
 #include "utils/TimeUtils.h"
 #include "core/NodeIdentity.h"
@@ -47,11 +48,7 @@ bool MqttService::reconnect() {
 
     LogService::info("Tentando conectar MQTT...");
 
-    String willTopic =
-        String(MQTT_ROOT_TOPIC) +
-        "/devices/" +
-        nodeId +
-        "/status";
+    String willTopic = topicStatus_();
 
     bool connected = _mqtt.connect(
         nodeId.c_str(),
@@ -74,14 +71,8 @@ bool MqttService::reconnect() {
             true
         );
 
-        // Assina comandos diretos ao device
-        String cmdTopic =
-            String(MQTT_ROOT_TOPIC) +
-            "/devices/" +
-            nodeId +
-            "/#";
-
-        _mqtt.subscribe(cmdTopic.c_str());
+        // Assina comandos do ambiente (padrão único)
+        _mqtt.subscribe(topicCmdWildcard_().c_str());
 
         // Publica HELLO inicial (igual seu teste MQTT-FB)
         publishHello();
@@ -94,25 +85,9 @@ bool MqttService::reconnect() {
     return connected;
 }
 
-
 bool MqttService::isConnected() {
     return _mqtt.connected();
 }
-
-/*
-void MqttService::onMessage(char* topic,
-                            byte* payload,
-                            unsigned int length) {
-
-    String msg;
-
-    for (unsigned int i = 0; i < length; i++) {
-        msg += (char)payload[i];
-    }
-
-    LogService::info("MQTT RX: " + String(topic) + " -> " + msg);
-}
-*/
 
 void MqttService::onMessage(char* topic,
                             byte* payload,
@@ -130,51 +105,30 @@ void MqttService::onMessage(char* topic,
 
     LogService::info("MQTT RX: " + topicStr + " -> " + msg);
 
-    // Verifica se é tópico de comando
-    const String nodeId = NodeIdentity::id();
-    String cmdPrefix =
-        String(MQTT_ROOT_TOPIC) +
-        "/" + nodeId + "/";
+    // Padrão de comandos: servermaster/<NodeID>/<ENV>/cmd/<canal>
+    const String cmdPrefix = baseTopic_() + "/cmd/";
+    if (!topicStr.startsWith(cmdPrefix)) return;
 
-    if (!topicStr.startsWith(cmdPrefix)) {
-        return; // não é comando do device
-    }
-
-    if (_commandCallback == nullptr) {
-        return; // usuário não registrou callback
-    }
-
-    // Parse JSON
+    // Parse JSON (para callback do usuário)
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, msg);
-
     if (error) {
         LogService::warn("JSON inválido");
         return;
     }
 
-    String action = doc["action"] | "";
-    String value  = doc["value"]  | "";
+    if (_commandCallback != nullptr) {
+        String action = doc["action"] | "";
+        String value  = doc["value"]  | "";
+        _commandCallback(action, value, doc);
+    }
 
-    _commandCallback(action, value, doc);
-
-    String base =
-    String(MQTT_ROOT_TOPIC) +
-    "/devices/" +
-    nodeId +
-    "/";
-
-    if (!topicStr.startsWith(base)) return;
-
-    String channel = topicStr.substring(base.length());
-
-    if (channel == "cmd") {
+    const String channel = topicStr.substring(cmdPrefix.length());
+    if (channel == "do") {
         handleCommand(msg);
-    }
-    else if (channel == "config") {
+    } else if (channel == "config") {
         handleConfig(msg);
-    }
-    else if (channel == "ota") {
+    } else if (channel == "ota") {
         handleOta(msg);
     }
 }
@@ -183,11 +137,7 @@ void MqttService::publishHello() {
 
     const String nodeId = NodeIdentity::id();
 
-    String topic =
-        String(MQTT_ROOT_TOPIC) +
-        "/devices/" +
-        nodeId +
-        "/status";
+    String topic = topicStatus_();
 
     String payload = "{";
     payload += "\"chip\":\"" + nodeId + "\",";
@@ -201,26 +151,109 @@ void MqttService::publishData(const String& payload, bool retain) {
 
     if (!_mqtt.connected()) return;
 
-    String topic =
-        String(MQTT_ROOT_TOPIC) +
-        "/devices/" +
-        NodeIdentity::id() +
-        "/data";
-
-    _mqtt.publish(topic.c_str(), payload.c_str(), retain);
+    _mqtt.publish(topicData_().c_str(), payload.c_str(), retain);
 }
 
 void MqttService::publishSerial(const String& message) {
 
     if (!_mqtt.connected()) return;
 
-    String topic =
-        String(MQTT_ROOT_TOPIC) +
-        "/serial/" +
-        NodeIdentity::id();
-
-    _mqtt.publish(topic.c_str(), message.c_str(), false);
+    _mqtt.publish(topicSerial_().c_str(), message.c_str(), false);
 }
+
+/* =======================
+    API "máscara" (Serial-like)
+   ======================= */
+
+bool MqttService::pub(const String& subtopic, const String& payload, bool retain) {
+    if (!_mqtt.connected()) return false;
+    const String t = baseTopic_() + "/" + subtopic;
+    return _mqtt.publish(t.c_str(), payload.c_str(), retain);
+}
+
+bool MqttService::status(const String& payload, bool retain) {
+    if (!_mqtt.connected()) return false;
+    return _mqtt.publish(topicStatus_().c_str(), payload.c_str(), retain);
+}
+
+bool MqttService::data(const String& payload, bool retain) {
+    publishData(payload, retain);
+    return _mqtt.connected();
+}
+
+bool MqttService::tele(const String& payload, bool retain) {
+    if (!_mqtt.connected()) return false;
+    return _mqtt.publish(topicTelemetry_().c_str(), payload.c_str(), retain);
+}
+
+bool MqttService::event(const String& type, const String& payloadJson) {
+    if (!_mqtt.connected()) return false;
+    // JSON pequeno e padrão
+    String msg = String("{\"type\":\"") + type + "\",\"data\":" + payloadJson + "}";
+    return _mqtt.publish(topicEvent_().c_str(), msg.c_str(), false);
+}
+
+bool MqttService::info(const String& msg)  { return println(String("[INFO] ")  + msg); }
+bool MqttService::warn(const String& msg)  { return println(String("[WARN] ")  + msg); }
+bool MqttService::error(const String& msg) { return println(String("[ERROR] ") + msg); }
+
+bool MqttService::print(const String& msg) {
+    if (!_mqtt.connected()) return false;
+    return _mqtt.publish(topicSerial_().c_str(), msg.c_str(), false);
+}
+
+bool MqttService::println(const String& msg) {
+    return print(msg + "\n");
+}
+
+bool MqttService::println() {
+    return print("\n");
+}
+
+bool MqttService::cmd(const String& action, const String& value) {
+    if (!_mqtt.connected()) return false;
+    String payload = "{";
+    payload += "\"action\":\"" + action + "\",";
+    payload += "\"value\":\"" + value + "\"";
+    payload += "}";
+    const String t = baseTopic_() + "/cmd/do";
+    return _mqtt.publish(t.c_str(), payload.c_str(), false);
+}
+
+bool MqttService::cmd(const String& action, bool value) {
+    // Converte bool para algo humano no broker: ON/OFF
+    return cmd(action, value ? "ON" : "OFF");
+}
+
+bool MqttService::cmd(const String& action, int value) {
+    return cmd(action, String(value));
+}
+
+bool MqttService::cmd(const String& action, float value, uint8_t decimals) {
+    // Converte float de forma compatível com ESP32 e ESP8266
+    // dtostrf evita ambiguidade do construtor String(float, decimals) no core do ESP32
+    char buf[24];
+    dtostrf(value, 0, decimals, buf);  // width=0, precision=decimals
+    String s(buf);
+    s.trim(); // remove espaços que o dtostrf pode colocar no começo
+    return cmd(action, s);
+}
+
+/* =======================
+    Helpers de tópico
+   ======================= */
+
+String MqttService::baseTopic_() {
+    // servermaster/<NodeID>/<ENV>
+    return String(MQTT_ROOT_TOPIC) + "/" + NodeIdentity::id() + "/" + String(DEVICE_ENVIRONMENT);
+}
+
+String MqttService::topicStatus_()      { return baseTopic_() + "/status"; }
+String MqttService::topicData_()        { return baseTopic_() + "/data"; }
+String MqttService::topicTelemetry_()   { return baseTopic_() + "/telemetry"; }
+String MqttService::topicEvent_()       { return baseTopic_() + "/event"; }
+String MqttService::topicCmdWildcard_() { return baseTopic_() + "/cmd/#"; }
+String MqttService::topicSerial_()      { return baseTopic_() + "/serial"; }
 
 CommandCallback MqttService::_commandCallback = nullptr;
 

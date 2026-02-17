@@ -1,92 +1,78 @@
 #include <MyLibere.h>
+#include "UserConfig.h"
 
 /*
 ===========================================================
-Exemplo Oficial MyLibere – MQTT Completo
+Exemplo Oficial MyLibere – MQTT Completo (Serial-like)
 ===========================================================
 
 Demonstra:
 
-✔ Inicialização da lib
-✔ Envio periódico de dados (não bloqueante)
-✔ Publicação de log MQTT
+✔ Inicialização da MyLibere
+✔ Envio periódico de dados (não bloqueante com millis)
+✔ Log via MQTT usando máscara estilo Serial (Mqtt.info)
 ✔ Estrutura limpa e organizada
 ✔ Compatível com ESP32 e ESP8266
 
-Tópicos utilizados automaticamente:
+Tópicos (padrão MyLibere):
 
-/devices/{nodeId}/data
-/serial/{nodeId}
-/{nodeId}/cmd
+servermaster/<NodeID>/<ENV>/data
+servermaster/<NodeID>/<ENV>/serial
+servermaster/<NodeID>/<ENV>/status
+servermaster/<NodeID>/<ENV>/cmd/#
+
+Dica:
+- <ENV> vem de DEVICE_ENVIRONMENT (ex: "cooksmart")
 ===========================================================
 */
-
 
 // ==========================================================
 // CONFIGURAÇÕES DO EXEMPLO
 // ==========================================================
 
-// Intervalo de envio de dados (não bloqueante)
-const unsigned long SEND_INTERVAL = 5000;
-
-// Controle interno de tempo (millis)
-unsigned long lastSend = 0;
-
+const unsigned long SEND_INTERVAL = 5000;  // intervalo de envio (ms)
+unsigned long lastSend = 0;                // controle de tempo (millis)
 
 // ==========================================================
 // SETUP
 // ==========================================================
 
 void setup() {
-
-    // Inicializa Serial
     Serial.begin(115200);
 
-    // Inicializa framework MyLibere
-    // Responsável por:
-    // - Identidade do node
-    // - WiFi
-    // - MQTT
-    // - Logs
+    // Responsabilidade da MyLibere:
+    // - gerar NodeID
+    // - conectar WiFi
+    // - conectar MQTT
+    // - manter serviços internos
     MyLibere::begin();
-}
 
+    Log.info("BasicMQTT iniciado");
+    Mqtt.event("boot");
+}
 
 // ==========================================================
 // LOOP PRINCIPAL
 // ==========================================================
 
 void loop() {
-
-    // Mantém serviços internos funcionando
-    // (WiFi, MQTT, OTA futuro, etc.)
     MyLibere::loop();
 
-    unsigned long now = millis();
-
-    // ======================================================
-    // ENVIO PERIÓDICO DE DADOS (NÃO BLOQUEANTE)
-    // ======================================================
+    const unsigned long now = millis();
 
     if (now - lastSend >= SEND_INTERVAL) {
-
         lastSend = now;
 
-        // ---------------------------------------------
-        // Montagem de payload JSON simples e leve
-        // ---------------------------------------------
-
+        // Payload JSON simples (leve e fácil de debugar)
         String payload = "{";
         payload += "\"temp\":28.5,";
         payload += "\"umidade\":52";
         payload += "}";
 
-        // Publica dados no tópico oficial:
-        // /devices/{nodeId}/data
-        MyLibere::mqtt().publishData(payload, false);
+        // Publica em: servermaster/<NodeID>/<ENV>/data
+        Mqtt.data(payload, false);
 
-        // Publica log no tópico serial:
-        // /serial/{nodeId}
-        MyLibere::mqtt().publishSerial("Enviando dados MQTT");
+        // Log humano em: servermaster/<NodeID>/<ENV>/serial
+        Mqtt.info("Enviando dados MQTT");
     }
 }
